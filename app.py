@@ -1,6 +1,13 @@
 from flask import Flask, request
+from models import db
 
 app = Flask(__name__)
+
+# SQLite database file will be created in your project folder
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///weather.sqlite3"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+db.init_app(app)
 
 @app.get("/")
 def home():
@@ -26,3 +33,4 @@ def echo():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
+
