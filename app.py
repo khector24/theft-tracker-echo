@@ -3,7 +3,6 @@ from models import db
 
 app = Flask(__name__)
 
-# SQLite database file will be created in your project folder
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///weather.sqlite3"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
