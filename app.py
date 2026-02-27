@@ -3,35 +3,34 @@ from models import db, Incident
 from datetime import datetime
 import os
 import time
-
 from pathlib import Path
 
-DB_PATH = Path("instance/app.db")
-
-def ensure_db_exists():
-    if not DB_PATH.exists():
-        from init_db import init_db
-        init_db()
-
-# ---- super-simple in-memory metrics ----
+# ---- simple in-memory metrics ----
 START_TIME = time.time()
 TOTAL_REQUESTS = 0
 INCIDENTS_CREATED = 0
 
+
 def create_app():
     app = Flask(__name__)
 
-    # SQLite local, Postgres on Render via DATABASE_URL
+    # ---- Database configuration ----
     db_url = os.getenv("DATABASE_URL", "sqlite:///incidents.sqlite3")
 
-    # Render Postgres sometimes uses postgres:// (SQLAlchemy wants postgresql://)
+    # Render sometimes provides postgres:// (SQLAlchemy expects postgresql://)
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
 
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
     db.init_app(app)
 
+    # ---- AUTO-CREATE TABLES ON STARTUP (LOCAL + RENDER SAFE) ----
+    with app.app_context():
+        db.create_all()
+
+    # ---- request counter ----
     @app.before_request
     def count_requests():
         global TOTAL_REQUESTS
@@ -48,17 +47,17 @@ def create_app():
 
     @app.get("/metrics")
     def metrics():
-        uptime_seconds = max(time.time() - START_TIME, 0.000001)
-        rps = TOTAL_REQUESTS / uptime_seconds
+        uptime = max(time.time() - START_TIME, 0.000001)
+        rps = TOTAL_REQUESTS / uptime
         return jsonify({
             "status": "ok",
-            "uptime_seconds": round(uptime_seconds, 2),
+            "uptime_seconds": round(uptime, 2),
             "total_requests": TOTAL_REQUESTS,
             "requests_per_second": round(rps, 4),
             "incidents_created": INCIDENTS_CREATED,
         }), 200
 
-    # ---------- Web app ----------
+    # ---------- Web UI ----------
     @app.get("/")
     def home():
         return """
@@ -90,7 +89,7 @@ def create_app():
         return "<h2>Dashboard</h2><ul>" + "".join(rows) + "</ul><p><a href='/'>Back</a></p>"
 
     @app.get("/incidents/<int:incident_id>")
-    def incident_detail(incident_id: int):
+    def incident_detail(incident_id):
         i = Incident.query.get_or_404(incident_id)
         return f"""
         <h2>Incident #{i.id}</h2>
@@ -104,42 +103,57 @@ def create_app():
         <p><a href="/incidents">Back to Dashboard</a></p>
         """
 
-    # ---------- REST collaboration + Event messaging (publish job) ----------
+    # ---------- Incident Creation ----------
     @app.post("/incidents")
     def create_incident():
         global INCIDENTS_CREATED
+
         category = request.form.get("category", "other").strip()
         description = request.form.get("description", "").strip()
+
         if not description:
             return "Description required", 400
 
-        # best-effort client IP
+        # Best-effort client IP
         ip = request.headers.get("X-Forwarded-For", request.remote_addr)
         if ip and "," in ip:
             ip = ip.split(",")[0].strip()
 
-        inc = Incident(category=category, description=description, ip=ip, status="NEW")
+        inc = Incident(
+            category=category,
+            description=description,
+            ip=ip,
+            status="NEW",
+        )
+
         db.session.add(inc)
         db.session.commit()
 
         INCIDENTS_CREATED += 1
 
-        # publish enrichment job (if REDIS_URL is configured)
+        # Fire-and-forget enrichment job (optional)
         try:
             from tasks import enqueue_enrichment
             enqueue_enrichment(inc.id)
         except Exception:
-            # still fine locally without Redis
             pass
 
-        return f"<p>✅ Created incident #{inc.id}</p><p><a href='/incidents/{inc.id}'>View</a></p><p><a href='/'>Back</a></p>", 201
+        return (
+            f"<p>✅ Created incident #{inc.id}</p>"
+            f"<p><a href='/incidents/{inc.id}'>View</a></p>"
+            f"<p><a href='/'>Back</a></p>",
+            201,
+        )
 
-    # ---------- Analyzer ----------
+    # ---------- Analysis ----------
     @app.get("/analysis")
     def analysis():
         total = db.session.query(db.func.count(Incident.id)).scalar() or 0
-        by_category = db.session.query(Incident.category, db.func.count(Incident.id)) \
-            .group_by(Incident.category).all()
+        by_category = (
+            db.session.query(Incident.category, db.func.count(Incident.id))
+            .group_by(Incident.category)
+            .all()
+        )
 
         return jsonify({
             "total_incidents": total,
@@ -148,6 +162,8 @@ def create_app():
 
     return app
 
+
+# ---- Create app instance ----
 app = create_app()
 
 if __name__ == "__main__":
