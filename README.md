@@ -23,3 +23,12 @@ This project uses continuous delivery:
 - GitHub Actions runs tests on every push
 - Render automatically deploys the `main` branch after CI passes
 - No manual deployment steps are required
+
+## Data Analysis
+
+The application provides a data analysis endpoint:
+
+- **GET /analysis**
+  - Returns total incident count
+  - Groups incidents by category
+  - Used by unit tests with mocked database queries
