@@ -132,6 +132,7 @@ def create_app():
         INCIDENTS_CREATED += 1
 
         # Fire-and-forget enrichment job (optional)
+        # Event collaboration: publish incident ID for async enrichment
         try:
             from tasks import enqueue_enrichment
             enqueue_enrichment(inc.id)

@@ -2,6 +2,10 @@ import os
 from redis import Redis
 from rq import Queue
 
+"""
+Event messaging: decouples incident creation from enrichment
+"""
+
 def _queue():
     redis_url = os.getenv("REDIS_URL")
     if not redis_url:
