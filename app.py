@@ -4,6 +4,15 @@ from datetime import datetime
 import os
 import time
 
+from pathlib import Path
+
+DB_PATH = Path("instance/app.db")
+
+def ensure_db_exists():
+    if not DB_PATH.exists():
+        from init_db import init_db
+        init_db()
+
 # ---- super-simple in-memory metrics ----
 START_TIME = time.time()
 TOTAL_REQUESTS = 0
