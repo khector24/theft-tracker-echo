@@ -15,3 +15,11 @@ This application exposes monitoring endpoints suitable for production environmen
   - incidents_created
 
 These endpoints support observability and production monitoring requirements.
+
+## Continuous Delivery
+
+This project uses continuous delivery:
+
+- GitHub Actions runs tests on every push
+- Render automatically deploys the `main` branch after CI passes
+- No manual deployment steps are required
